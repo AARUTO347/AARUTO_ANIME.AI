@@ -1,0 +1,31 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  environment = { NODE_VERSION = "20.11.1" }
+
+# Set VITE_GEMINI_API_KEY (and optionally VITE_GROQ_API_KEY,
+# VITE_POLLINATIONS_API_KEY, VITE_ADMIN_EMAIL / VITE_ADMIN_PASSWORD)
+# in the Netlify UI: Site configuration > Environment variables.
+# Do NOT commit real keys to this file.
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

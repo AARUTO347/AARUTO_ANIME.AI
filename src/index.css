@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --chakra-orange: #ff6b00;
+    --chakra-red: #ff003c;
+    --bg-dark: #050505;
+    --gold: #ffd700;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-dark);
+    color: #ffffff;
+    overflow-x: hidden;
+    height: 100dvh;
+    width: 100vw;
+}
+
+.font-bungee { font-family: 'Bungee Inline', cursive; }
+.font-space { font-family: 'Space Grotesk', sans-serif; }
+
+/* God Level Glassmorphism */
+.glass {
+    background: rgba(10, 10, 12, 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 107, 0, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+.chakra-gradient {
+    background: linear-gradient(135deg, #ff6b00 0%, #ff003c 100%);
+}
+
+.manga-gradient {
+    background: linear-gradient(135deg, #222 0%, #000 100%);
+}
+
+.gold-text {
+    background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.chakra-text {
+    background: linear-gradient(135deg, #ff9e00 0%, #ff4d00 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* God-level animations */
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 15px rgba(255, 107, 0, 0.2); }
+    50% { box-shadow: 0 0 30px rgba(255, 107, 0, 0.5); }
+}
+
+.summoning-circle {
+    animation: rotate-slow 20s linear infinite;
+}
+
+@keyframes rotate-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.noise {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.custom-scrollbar::-webkit-scrollbar { width: 3px; height: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--chakra-orange); }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* Mobile specific fixes */
+@media (max-width: 768px) {
+    .mobile-full-height { height: calc(100dvh - 80px); }
+}
