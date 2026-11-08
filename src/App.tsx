@@ -85,7 +85,7 @@ const App: React.FC = () => {
   const [authBusy, setAuthBusy] = useState(false);
 
   const [prompt, setPrompt] = useState('');
-  const [quality, setQuality] = useState<QualityLevel>('GENIN');
+  const [quality, setQuality] = useState<QualityLevel>('JONIN');
   const [state, setState] = useState<GenerationState>(GenerationState.IDLE);
   const [result, setResult] = useState<GeneratedResult | null>(null);
   const [history, setHistory] = useState<GeneratedResult[]>([]);

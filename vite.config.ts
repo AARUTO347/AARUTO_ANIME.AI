@@ -7,7 +7,8 @@ import react from '@vitejs/plugin-react';
 // See .env.example and README.md — never commit a real key.
 export default defineConfig({
   server: {
-    port: 3000,
+    port: 3010,
+    strictPort: true,
     host: '0.0.0.0',
   },
   plugins: [react()],

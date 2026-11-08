@@ -29,6 +29,9 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 const detailFor = (quality: QualityLevel): string =>
   quality === 'JONIN' ? DETAIL_ENHANCERS.master : quality === 'CHUNIN' ? DETAIL_ENHANCERS.high : DETAIL_ENHANCERS.standard;
 
+// JONIN warrants the extra render quality — enhance=true boosts flux prompt adherence.
+const enhanceFor = (quality: QualityLevel): boolean => quality === 'JONIN';
+
 /**
  * Render an image with Pollinations (free hosted flux).
  * Uses the key when configured; otherwise attempts anonymous access.
@@ -41,16 +44,19 @@ export async function generatePollinationsImage(
   settings: AppSettings,
   type: ImagePromptType = 'character',
 ): Promise<string> {
-  const { width, height } = dimensions(type, settings.resolution ?? '1024');
+  // JONIN renders at full tilt (2048-class) regardless of the resolution dropdown;
+  // GENIN/CHUNIN respect the user's resolution setting.
+  const sizeResolution = quality === 'JONIN' ? '2048' : (settings.resolution ?? '1024');
+  const { width, height } = dimensions(type, sizeResolution);
   const prompt = buildImagePrompt(design, settings, type, detailFor(quality));
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),
     model: MODEL,
     nologo: 'true',
-    private: 'true',
     referrer: 'aaruto_anime_ai',
   });
+  if (enhanceFor(quality)) params.set('enhance', 'true');
   const url = `${POLLINATIONS_BASE}/${encodeURIComponent(prompt)}?${params}`;
 
   let lastError: Error | null = null;

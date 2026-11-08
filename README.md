@@ -11,7 +11,7 @@
 ```bash
 npm install
 cp .env.example .env.local   # then put your free keys in .env.local
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:3010
 ```
 
 Recommended free keys (both optional but advised; total setup < 2 minutes, no card):
