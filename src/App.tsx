@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { extractErrorMessage, isQuotaError } from './services/geminiService';
+import { extractErrorMessage, isQuotaError } from './lib/aiErrors';
 import { AiService } from './services/aiService';
-import { isGeminiConfigured } from './services/geminiService';
 import { isGroqConfigured } from './services/groqService';
 import {
   GenerationState,
@@ -31,8 +30,14 @@ import {
 } from './lib/storage';
 import { hashPassword, verifyPassword, isPlausibleEmail } from './lib/authCrypto';
 import { decodeShareHash } from './lib/shareCodec';
-import { resolveTier } from './lib/quality';
+import { themeAudioScript } from './lib/prompts';
 import { generateSpectralPortrait, generateSpectralEnvironment } from './lib/spectralPortrait';
+
+const QUALITY_INFO: Record<QualityLevel, string> = {
+  GENIN: 'GENIN · flux · fast · 512px',
+  CHUNIN: 'CHUNIN · flux · 768px · high detail',
+  JONIN: 'JONIN · flux · 1024px · master detail',
+};
 
 // Demo-only admin account, configured at build time (never commit real credentials).
 const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim() || undefined;
@@ -363,7 +368,7 @@ const App: React.FC = () => {
     if (imageError) {
       showNotify(
         isQuotaError(imageError)
-          ? 'Free tier: image quota is 0 — a Spectral Sketch was manifested instead (design preserved).'
+          ? 'Images unavailable (quota) — a Spectral Sketch was manifested instead (design preserved).'
           : 'Image failed — a Spectral Sketch was manifested instead (design preserved).',
         'info',
       );
@@ -408,7 +413,7 @@ const App: React.FC = () => {
     if (imageError) {
       showNotify(
         isQuotaError(imageError)
-          ? 'Ascension recorded — free-tier image quota is 0, so a Spectral Sketch was manifested.'
+          ? 'Ascension recorded — Pollinations unavailable, so a Spectral Sketch was manifested.'
           : 'Evolution image failed — a Spectral Sketch was manifested.',
         'info',
       );
@@ -439,7 +444,7 @@ const App: React.FC = () => {
     if (envError) {
       showNotify(
         isQuotaError(envError)
-          ? 'Free tier: image quota is 0 — a Spectral Sketch environment was manifested instead.'
+          ? 'Images unavailable — a Spectral Sketch environment was manifested instead.'
           : 'World image failed — a Spectral Sketch environment was manifested.',
         'info',
       );
@@ -449,31 +454,62 @@ const App: React.FC = () => {
     setState(GenerationState.IDLE);
   };
 
+  const speakWithDeviceVoice = (text: string) =>
+    new Promise<void>((resolve, reject) => {
+      const synth = window.speechSynthesis;
+      if (!synth) {
+        reject(new Error('Web Speech API unavailable in this browser.'));
+        return;
+      }
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 0.92;
+      utter.pitch = 0.75;
+      utter.volume = 1;
+      const voices = synth.getVoices();
+      const preferred =
+        voices.find((v) => /^en/i.test(v.lang) && /daniel|david|google us/i.test(v.name)) ??
+        voices.find((v) => /^en(-|_)/i.test(v.lang)) ??
+        voices[0];
+      if (preferred) utter.voice = preferred;
+      utter.onend = () => resolve();
+      utter.onerror = (e) => reject(new Error(`speech synthesis failed: ${e.error}`));
+      synth.cancel();
+      synth.speak(utter);
+    });
+
+  const playBase64Audio = async (b64: string) => {
+    const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) throw new Error('Web Audio API is not available in this browser.');
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ctx = new AudioCtx();
+    try {
+      const decoded = await ctx.decodeAudioData(bytes.buffer);
+      const src = ctx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(ctx.destination);
+      src.start();
+    } finally {
+      window.setTimeout(() => ctx.close().catch(() => undefined), 30_000);
+    }
+  };
+
   const handlePlayTheme = async () => {
     if (!result || state !== GenerationState.IDLE) return;
     setState(GenerationState.GENERATING_AUDIO);
     try {
-      const b64 = await ai.current.generateThemeAudio(result.design);
-      const AudioCtx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) throw new Error('Web Audio API is not available in this browser.');
-      const ctx = new AudioCtx({ sampleRate: 24000 });
       try {
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        const i16 = new Int16Array(bytes.buffer);
-        const buf = ctx.createBuffer(1, i16.length, 24000);
-        const data = buf.getChannelData(0);
-        for (let i = 0; i < i16.length; i++) data[i] = i16[i] / 32768.0;
-        const src = ctx.createBufferSource();
-        src.buffer = buf;
-        src.connect(ctx.destination);
-        src.start();
-      } finally {
-        // Release the context once playback is likely finished (theme ≈ a few seconds).
-        window.setTimeout(() => ctx.close().catch(() => undefined), 30_000);
+        const { data } = await ai.current.generateThemeAudio(result.design);
+        await playBase64Audio(data);
+        showNotify('Theme resonating.', 'success');
+      } catch (err) {
+        // Orpheus TTS needs a one-time terms acceptance in the Groq console —
+        // fall back to the browser's built-in voice so the feature never dead-ends.
+        console.warn('[theme] Orpheus TTS unavailable, using device voice', err);
+        await speakWithDeviceVoice(themeAudioScript(result.design));
+        showNotify('Theme resonating (device voice — accept the Orpheus terms in Groq console for studio audio).', 'info');
       }
-      showNotify('Theme resonating.', 'success');
     } catch (err) {
       notifyError(err, 'Audio resonance failed');
     } finally {
@@ -511,22 +547,19 @@ const App: React.FC = () => {
 
   const handleTestConnection = async () => {
     setConnectionState('testing');
-    setConnectionDetail('Pinging Gemini and Groq…');
+    setConnectionDetail('Pinging Groq…');
     const diagnostic = await ai.current.testConnection();
-    const geminiLine = diagnostic.gemini.ok
-      ? 'Gemini ✓ working'
-      : `Gemini ✗ ${diagnostic.gemini.detail}`;
     const groqLine = !diagnostic.groq.configured
       ? 'Groq — not configured'
       : diagnostic.groq.ok
         ? 'Groq ✓ working'
         : `Groq ✗ ${diagnostic.groq.detail}`;
     const pollinationsLine = diagnostic.pollinations.configured
-      ? 'Pollinations ✓ key set (image fallback)'
-      : 'Pollinations — anonymous image fallback';
-    const anyOk = diagnostic.gemini.ok || diagnostic.groq.ok;
+      ? 'Pollinations ✓ key set (flux)'
+      : 'Pollinations — anonymous flux';
+    const anyOk = diagnostic.groq.ok;
     setConnectionState(anyOk ? 'ok' : 'error');
-    setConnectionDetail(`${geminiLine}  ·  ${groqLine}  ·  ${pollinationsLine}`);
+    setConnectionDetail(`${groqLine}  ·  ${pollinationsLine}`);
   };
 
   const handleExportBackup = () => {
@@ -644,11 +677,9 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {!isGeminiConfigured() && (
+      {!isGroqConfigured() && (
         <div role="alert" className="flex-shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-300 px-6 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-center z-30">
-          {isGroqConfigured()
-            ? 'Gemini key missing — text runs on Groq; images unavailable (Spectral Sketch manifests instead). Set VITE_GEMINI_API_KEY for full power.'
-            : 'No AI keys configured — set VITE_GEMINI_API_KEY (and optionally the free VITE_GROQ_API_KEY) in .env.local and restart.'}
+          Groq key missing — set the FREE VITE_GROQ_API_KEY in .env.local (console.groq.com/keys). Images still work free via Pollinations.
         </div>
       )}
 
@@ -741,7 +772,7 @@ const App: React.FC = () => {
               <button
                 key={q}
                 onClick={() => setQuality(q)}
-                title={resolveTier(q, settings.resolution).description}
+                title={QUALITY_INFO[q]}
                 className={`px-8 py-3 rounded-2xl text-[11px] font-black tracking-[0.2em] whitespace-nowrap transition-all ${quality === q ? 'chakra-gradient text-white shadow-lg' : 'bg-white/5 text-gray-500 hover:text-white'}`}
               >{q}</button>
             ))}
@@ -794,7 +825,7 @@ const App: React.FC = () => {
                   <CharacterSheet
                     design={result.design}
                     onUpdate={(f, v) => setResult(prev => prev ? { ...prev, design: { ...prev.design, [f]: v } } : prev)}
-                    gemini={ai.current}
+                    ai={ai.current}
                     onEvolve={handleEvolve}
                     onGenEnv={handleGenEnv}
                     onPlayTheme={handlePlayTheme}
@@ -861,7 +892,7 @@ const App: React.FC = () => {
                      connectionState === 'ok' ? 'text-emerald-400' :
                      connectionState === 'error' ? 'text-red-400' : 'text-gray-500'
                    }`}>
-                     {connectionDetail || 'Ping Gemini (and Groq, when configured)'}
+                     {connectionDetail || 'Ping Groq and check Pollinations status'}
                    </p>
                 </div>
                 <button onClick={handleTestConnection} disabled={connectionState === 'testing'} className="flex-shrink-0 px-6 py-4 rounded-2xl bg-cyan-600/10 border border-cyan-500/30 text-cyan-400 text-[10px] font-black uppercase tracking-widest hover:bg-cyan-600 hover:text-white transition-all disabled:opacity-50">

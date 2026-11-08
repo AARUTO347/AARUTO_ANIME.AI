@@ -1,6 +1,6 @@
 import type { CharacterDesign } from '../types';
 
-/** Shared prompt bodies used by both Gemini and Groq providers. */
+/** Shared prompt bodies for the Groq provider (and any OpenAI-compatible provider). */
 
 export const SYSTEM_SENSEI =
   'You are the Omni-Sensei of AARUTO_ANIME.AI, the most advanced character generation terminal.';
@@ -51,6 +51,18 @@ export const themeAudioScript = (design: CharacterDesign) =>
   `Heed the call of ${design.name}, the ${design.title}! Originating from ${design.homeworld}, their presence reshapes reality itself. Power levels are peaking at stage ${design.evolutionStage}. Let the chronicle begin!`;
 
 export type ImagePromptType = 'character' | 'environment';
+
+export type PromptDetail = 'standard' | 'high' | 'master';
+
+/** Detail-level prompt enhancers appended to the image prompt. */
+export const DETAIL_ENHANCERS: Record<PromptDetail, string> = {
+  standard:
+    'clean composition, bold colors, sharp focus.',
+  high:
+    'intricate details, crisp linework, rich textures, cinematic lighting, volumetric atmosphere.',
+  master:
+    'masterpiece, top-tier quality, hyper intricate detail, award-winning illustration, 8k resolution, cinematic lighting, volumetric fog, trending on artstation and pixiv.',
+};
 
 export const buildImagePrompt = (
   design: CharacterDesign,

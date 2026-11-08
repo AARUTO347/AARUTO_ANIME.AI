@@ -2,7 +2,7 @@
 
 > The ultimate character summoning engine. Forge legendary anime personas with high-fidelity AI visuals and deep lore generation.
 
-React 19 + TypeScript + Vite single-page app powered by the Google Gemini API. Generate anime character designs, visualize them, evolve them, expand their worlds, synthesize their theme music, and chat with an AI "Omni-Sensei".
+**A 100% free stack** — React 19 + TypeScript + Vite SPA powered entirely by free tiers: **Groq** (free Qwen 3.8 27B for text, Orpheus TTS for theme music) and **Pollinations** (free hosted flux image generation, anonymous or keyed), with **local SVG fallbacks** for offline/quota-proof art. No Gemini, no billing, no credit card required.
 
 ## Quick start
 
@@ -10,21 +10,20 @@ React 19 + TypeScript + Vite single-page app powered by the Google Gemini API. G
 
 ```bash
 npm install
-cp .env.example .env.local   # then put your key in .env.local
+cp .env.example .env.local   # then put your free keys in .env.local
 npm run dev                  # http://localhost:3000
 ```
 
-Required environment variable in `.env.local`:
+Recommended free keys (both optional but advised; total setup < 2 minutes, no card):
 
-```
-VITE_GEMINI_API_KEY=your_gemini_api_key_here
-```
+| Variable | Where to get it | What it unlocks |
+|---|---|---|
+| `VITE_GROQ_API_KEY` | <https://console.groq.com/keys> | Text generation + Orpheus TTS |
+| `VITE_POLLINATIONS_API_KEY` | <https://enter.pollinations.ai> | Higher image rate limits (works anonymously too) |
 
-Get a key at <https://aistudio.google.com/apikey>.
+Orpheus TTS needs a **one-time terms acceptance** in the Groq console: <https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english> — until you click it, the theme button speaks with your browser's built-in voice instead.
 
-> **No key configured?** The app still runs, but a warning banner is shown and every generation will fail with a clear error.
-
-> **Free-tier keys and image generation.** The Gemini API free tier gives **zero quota** for image models (`gemini-2.5-flash-image`, `gemini-3-pro-image-preview`, …). Text features (designs, lore, Sensei, stat re-rolls) and **theme audio** work for free; MANIFEST/evolve images return `429 RESOURCE_EXHAUSTED (limit: 0)` without billing. The app automatically manifests a **Spectral Sketch** (deterministic local SVG portrait, seeded from the design — zero API cost) in place of the image, and keeps the design either way. To test your key, use **Settings → TEST KEY** (1-token ping).
+> **No keys at all?** The app still runs; a warning banner tells you what's missing, and image generation works anonymously via Pollinations.
 
 ## Scripts
 
@@ -39,20 +38,18 @@ Get a key at <https://aistudio.google.com/apikey>.
 
 ## Features
 
-- **AI character design** — structured JSON output (name, title, stats, powers, lore, homeworld, visual traits) via `gemini-3-flash-preview`
-- **Image materialization** — `GENIN`/`CHUNIN` tiers use `gemini-2.5-flash-image` (fast / high-detail); `JONIN` uses `gemini-3-pro-image-preview` at 1K–2K with automatic fallback to flash-image. See `src/lib/quality.ts`
+- **AI character design** — structured JSON output (name, title, stats, powers, lore, homeworld, visual traits) via Groq's free `qwen/qwen3.8-27b`
 - **Evolution system** — one-click ascension (stats clamped 1–100, stage increments enforced)
-- **World expansion** — 16:9 environment render of the character's homeworld
-- **Spectral Sketch (free mode)** — deterministic, locally generated SVG spirit-portraits **and homeworld landscapes** (seeded by identity/homeworld: palette from aesthetic, element glow from powers, crown/horns by evolution stage). Zero API cost — manifests whenever image generation fails, e.g. free-tier keys where all image models have quota 0
-- **Theme audio** — TTS-based theme narration via `gemini-2.5-flash-preview-tts` (works on the free tier)
-- **Free hosted images via Pollinations** — set `VITE_POLLINATIONS_API_KEY` (<https://enter.pollinations.ai>) and MANIFEST/evolve/expand-world render real flux images for **free** whenever Gemini image generation fails (works anonymously too). Full chain: Gemini → Pollinations → Spectral Sketch (local SVG)
-- **Optional free Groq fallback** — set `VITE_GROQ_API_KEY` (free at <https://console.groq.com/keys>) and every text call (design / evolution / oracle / sensei / re-rolls) automatically falls back to Groq's free `qwen/qwen3.8-27b` when Gemini fails (quota, bad key, network). Gemini stays primary. Groq has no image models, so visuals remain Gemini or Spectral Sketch
-- **Akashic Oracle** — in-sheet lore chat grounded in the character's context
+- **Image materialization** — free hosted flux via Pollinations (`VITE_POLLINATIONS_API_KEY` or anonymous). Full chain: Pollinations → **Spectral Sketch** (deterministic local SVG spirit-portrait). History never loses a design when the image fails
+- **Homeworld expansion** — 16:9 environment render (Pollinations, with local SVG landscape fallback)
+- **Theme audio** — Groq Orpheus TTS (`canopylabs/orpheus-v1-english`, `autumn` voice). Requires one-time terms acceptance; falls back to browser speech synthesis automatically
+- **Akashic Oracle** — in-sheet lore chat grounded in the character's context (Groq)
 - **Omni-Sensei** — general AI companion chat (separate from generation state)
 - **Temporal History + Eternal Archive** — persisted in IndexedDB (no localStorage quota crashes), with grid/list views
 - **Share chronicles** — Unicode-safe base64url link (`#/summon/...`) that imports the design into another session
-- **PNG download** — save the manifestation directly
+- **PNG/SVG download** — save the manifestation directly
 - **Backup & restore** — export/import history, scrolls and settings as JSON from the settings modal
+- **Settings → TEST KEY** — 1-token pings against Groq + Pollinations status in one click
 - **Demo auth** — local accounts on this device with SHA-256-hashed passwords (see Security notes)
 
 ## Project structure
@@ -68,19 +65,19 @@ Get a key at <https://aistudio.google.com/apikey>.
 │   │   ├── CharacterSheet.tsx  # Character detail/editor panel
 │   │   └── ErrorBoundary.tsx   # Recovery screen on render crash
 │   ├── services/
-│   │   ├── aiService.ts        # Facade: Gemini primary → Groq automatic fallback (text)
-│   │   ├── geminiService.ts    # Gemini API client (retry, validation, images, TTS)
-│   │   └── groqService.ts      # Groq free Llama API client (text, OpenAI-compatible)
+│   │   ├── aiService.ts        # Unified facade: Groq text/TTS + Pollinations images
+│   │   ├── groqService.ts      # Groq free API client (Qwen text + Orpheus TTS)
+│   │   └── pollinationsService.ts  # Free hosted flux image client
 │   └── lib/                    # Pure, unit-tested logic
 │       ├── storage.ts          # IndexedDB persistence + migration + backup
 │       ├── shareCodec.ts       # UTF-8-safe base64url share links
 │       ├── design.ts           # Design normalization & stat clamping
-│       ├── quality.ts          # GENIN/CHUNIN/JONIN → model mapping
-│       ├── prompts.ts          # Shared prompt bodies (both providers)
-│       ├── aiFallback.ts       # shouldFallbackToGroq (quota/401/5xx/network)
-│       ├── safeJson.ts         # Labelled JSON parse errors (fence-stripping)
+│       ├── prompts.ts          # Shared prompt bodies + image prompt builder
+│       ├── aiErrors.ts         # Google/Groq/Pollinations JSON error decoding
+│       ├── bytes.ts            # ArrayBuffer → base64 (chunked)
 │       ├── spectralPortrait.ts # Local SVG portraits & landscapes (free image mode)
-│       ├── authCrypto.ts       # SHA-256 password hashing (demo auth)
+│       ├── safeJson.ts         # Labelled JSON parse errors (fence-stripping)
+│       ├── authCrypto.ts       # SHA-256 password hashing (demo auth, with pure-TS fallback)
 │       └── *.test.ts           # Vitest unit tests
 ├── vite.config.ts              # Vite + Vitest config
 ├── tailwind.config.js
@@ -92,21 +89,20 @@ Get a key at <https://aistudio.google.com/apikey>.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `VITE_GEMINI_API_KEY` | Yes | Gemini API — design/images/TTS (free tier: text + audio only) |
-| `VITE_GROQ_API_KEY` | No (recommended) | Free Groq key (<https://console.groq.com/keys>) — automatic text-generation fallback when Gemini fails (quota/auth/network), or primary when no Gemini key is set |
-| `VITE_POLLINATIONS_API_KEY` | No (recommended) | Free Pollinations key (<https://enter.pollinations.ai>) — free hosted flux image generation when Gemini image fails; works anonymously too |
+| `VITE_GROQ_API_KEY` | Recommended | Free Groq key — text + Orpheus TTS |
 | `VITE_GROQ_TEXT_MODEL` | No | Override Groq model (default `qwen/qwen3.8-27b`) |
+| `VITE_POLLINATIONS_API_KEY` | No | Free Pollinations key — raises free image rate limits |
 | `VITE_ADMIN_EMAIL` / `VITE_ADMIN_PASSWORD` | No | Optional demo admin account (build-time, public in the bundle) |
 
-Verify both providers with **Settings → TEST KEY** (1-token ping each).
+Verify providers with **Settings → TEST KEY** (1-token ping + provider status).
 
 ## Security notes (read before deploying publicly)
 
 This is a **client-side-only** app. Understand what that means:
 
-1. **Your Gemini API key ships in the browser bundle.** Anyone who opens the deployed site can extract and abuse it. For a public deployment, either restrict the key (HTTP referrer restrictions in Google AI Studio) or move the Gemini calls behind a serverless proxy (e.g. Netlify Functions). The `.env.example` documents the current model.
+1. **All API keys ship in the browser bundle.** Anyone who opens the deployed site can extract them. The free keys move slowly to abuse but still abuseable — for a public deployment, either use spend limits or move calls behind a serverless proxy (e.g. Netlify Functions).
 2. **Demo auth is not real auth.** Accounts are stored in the browser's localStorage with SHA-256-hashed passwords. There is no server, no sessions, no rate limiting, no password reset. Do not reuse a real password.
-3. **The optional admin account** is configured at build time via `VITE_ADMIN_EMAIL` / `VITE_ADMIN_PASSWORD` and is equally public (it is embedded in the bundle). Use it only for demos — never for protecting anything real. If unset, no admin account exists.
+3. **The optional admin account** is configured at build time via `VITE_ADMIN_EMAIL` / `VITE_ADMIN_PASSWORD` and is equally public. Use it only for demos — never for protecting anything real.
 4. Share links encode the character design in the URL itself; treat them as public data.
 
 ## Deployment
@@ -115,7 +111,7 @@ See [NETLIFY_DEPLOY.md](./NETLIFY_DEPLOY.md) for Netlify (GitHub integration, CL
 
 ## Testing
 
-Unit tests cover the pure logic (share codec round-trip incl. multi-byte Unicode, stat clamping, design normalization, quality-tier mapping, credential hashing + pure-TS SHA-256 vs Web Crypto, Groq-fallback decision logic, spectral portrait/environment determinism, error-message decoding). Run `npm test`. React rendering is exercised manually via `npm run dev`.
+Unit tests cover the pure logic (share codec round-trip incl. multi-byte Unicode, stat clamping, design normalization, credential hashing + pure-TS SHA-256 vs Web Crypto, spectral portrait/environment determinism, error-message decoding). Run `npm test`. React rendering is exercised manually via `npm run dev`.
 
 ## License
 

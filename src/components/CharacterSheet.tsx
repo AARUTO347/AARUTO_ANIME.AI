@@ -7,7 +7,7 @@ import { clampStat } from '../lib/design';
 interface CharacterSheetProps {
   design: CharacterDesign;
   onUpdate: (field: keyof CharacterDesign, value: unknown) => void;
-  gemini: AiService;
+  ai: AiService;
   onEvolve: () => void;
   onGenEnv: () => void;
   onPlayTheme: () => void;
@@ -61,7 +61,7 @@ const getPowerIcon = (power: string) => {
   return 'fa-star'; // Generic fallback
 };
 
-const CharacterSheet: React.FC<CharacterSheetProps> = ({ design, onUpdate, gemini, onEvolve, onGenEnv, onPlayTheme, onNotify, isProcessing }) => {
+const CharacterSheet: React.FC<CharacterSheetProps> = ({ design, onUpdate, ai, onEvolve, onGenEnv, onPlayTheme, onNotify, isProcessing }) => {
   const [loreChatOpen, setLoreChatOpen] = useState(false);
   const [loreQuestion, setLoreQuestion] = useState('');
   const [loreSearch, setLoreSearch] = useState('');
@@ -77,7 +77,7 @@ const CharacterSheet: React.FC<CharacterSheetProps> = ({ design, onUpdate, gemin
   const handleReroll = async (field: keyof CharacterDesign) => {
     setIsLoadingField(String(field));
     try {
-      const newValue = await gemini.updateField(design, field);
+      const newValue = await ai.updateField(design, field);
       onUpdate(field, newValue);
       onNotify(`${String(field).charAt(0).toUpperCase() + String(field).slice(1)} re-manifested.`, 'success');
     } catch (e) {
@@ -92,7 +92,7 @@ const CharacterSheet: React.FC<CharacterSheetProps> = ({ design, onUpdate, gemin
     setIsLoadingField('visualTraits');
     onNotify(`Refining ${aspect}...`, 'info');
     try {
-      const newValue = await gemini.updateField(design, 'visualTraits');
+      const newValue = await ai.updateField(design, 'visualTraits');
       onUpdate('visualTraits', newValue);
       onNotify(`${aspect} optimized.`, 'success');
     } catch (e) {
@@ -114,7 +114,7 @@ const CharacterSheet: React.FC<CharacterSheetProps> = ({ design, onUpdate, gemin
     setLoreQuestion('');
     setIsLoadingField('lore_chat');
     try {
-      const answer = await gemini.loreChat(design, question);
+      const answer = await ai.loreChat(design, question);
       setLoreHistory(prev => [...prev, { q: question, a: answer }]);
     } catch (e) {
       console.error('[sheet] lore expansion failed', e);

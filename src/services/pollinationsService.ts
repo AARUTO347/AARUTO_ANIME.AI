@@ -1,7 +1,8 @@
-import { CharacterDesign, AppSettings } from '../types';
+import { CharacterDesign, AppSettings, QualityLevel } from '../types';
 import { buildImagePrompt, type ImagePromptType } from '../lib/prompts';
-import { DETAIL_ENHANCERS } from '../lib/quality';
-import { extractErrorMessage } from './geminiService';
+import { DETAIL_ENHANCERS } from '../lib/prompts';
+import { extractErrorMessage } from '../lib/aiErrors';
+import { arrayBufferToBase64 } from '../lib/bytes';
 
 export const POLLINATIONS_API_KEY: string | undefined =
   (import.meta.env.VITE_POLLINATIONS_API_KEY as string | undefined)?.trim() || undefined;
@@ -25,15 +26,8 @@ export function dimensions(type: ImagePromptType, resolution: '512' | '1024' | '
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-};
+const detailFor = (quality: QualityLevel): string =>
+  quality === 'JONIN' ? DETAIL_ENHANCERS.master : quality === 'CHUNIN' ? DETAIL_ENHANCERS.high : DETAIL_ENHANCERS.standard;
 
 /**
  * Render an image with Pollinations (free hosted flux).
@@ -43,12 +37,12 @@ const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
  */
 export async function generatePollinationsImage(
   design: CharacterDesign,
+  quality: QualityLevel,
   settings: AppSettings,
   type: ImagePromptType = 'character',
 ): Promise<string> {
   const { width, height } = dimensions(type, settings.resolution ?? '1024');
-  const detail = DETAIL_ENHANCERS.master;
-  const prompt = buildImagePrompt(design, settings, type, detail);
+  const prompt = buildImagePrompt(design, settings, type, detailFor(quality));
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),

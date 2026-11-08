@@ -1,5 +1,5 @@
 /**
- * Parse JSON returned by the Gemini API without ever throwing a raw
+ * Parse JSON returned by the AI providers without ever throwing a raw
  * SyntaxError / TypeError. Throws an Error with a human-readable,
  * labelled message instead so the UI can surface it.
  */

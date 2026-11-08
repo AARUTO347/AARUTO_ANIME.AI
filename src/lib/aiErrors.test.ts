@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractErrorMessage, isQuotaError } from './geminiService';
+import { extractErrorMessage, isQuotaError } from './aiErrors';
 
 describe('extractErrorMessage', () => {
   it('decodes an ApiError-wrapped Google JSON error', () => {

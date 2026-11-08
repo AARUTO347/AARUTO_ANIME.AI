@@ -2,7 +2,7 @@ import type { CharacterDesign } from '../types';
 
 /**
  * Spectral Sketch — a deterministic, fully local fallback portrait for
- * free-tier keys (the Gemini API free tier has zero image quota).
+ * when hosted image APIs are rate-limited or offline.
  * Each character produces a unique "summoning sigil spirit" SVG:
  * palette from their aesthetic, element glow from their powers,
  * crown/horns from their evolution stage, seeded by their identity.

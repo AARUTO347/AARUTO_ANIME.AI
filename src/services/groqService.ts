@@ -1,8 +1,9 @@
 import { CharacterDesign } from '../types';
 import { safeJsonParse } from '../lib/safeJson';
 import { parseDesignResponse, normalizeStats } from '../lib/design';
-import { designUserPrompt, evolveUserPrompt, updateFieldPrompt, oracleUserPrompt, SYSTEM_SENSEI } from '../lib/prompts';
-import { extractErrorMessage } from './geminiService';
+import { designUserPrompt, evolveUserPrompt, updateFieldPrompt, oracleUserPrompt, SYSTEM_SENSEI, themeAudioScript } from '../lib/prompts';
+import { extractErrorMessage } from '../lib/aiErrors';
+import { arrayBufferToBase64 } from '../lib/bytes';
 
 export const GROQ_API_KEY: string | undefined = (import.meta.env.VITE_GROQ_API_KEY as string | undefined)?.trim() || undefined;
 // Qwen 3.8 27B — fast, free tier, verified working with response_format json_object.
@@ -11,6 +12,9 @@ export const GROQ_API_KEY: string | undefined = (import.meta.env.VITE_GROQ_API_K
 export const GROQ_TEXT_MODEL: string = (import.meta.env.VITE_GROQ_TEXT_MODEL as string | undefined)?.trim() || 'qwen/qwen3.8-27b';
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_SPEECH_URL = 'https://api.groq.com/openai/v1/audio/speech';
+const GROQ_TTS_MODEL = 'canopylabs/orpheus-v1-english';
+const GROQ_TTS_VOICE = 'autumn';
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
 export function isGroqConfigured(): boolean {
@@ -87,7 +91,7 @@ async function groqChat(body: GroqChatBody): Promise<string> {
   throw lastError;
 }
 
-/** OpenAI-style assistant turn parsing for Gemini-format sensei history. */
+/** OpenAI-style assistant-turn parsing for sensei history. */
 const toGroqMessages = (history: Array<{ role: string; parts: Array<{ text: string }> }>) =>
   history.map((turn) => ({
     role: (turn.role === 'model' ? 'assistant' : turn.role) as 'user' | 'assistant' | 'system',
@@ -161,5 +165,43 @@ export class GroqService {
       messages: [{ role: 'system', content: SYSTEM_SENSEI }, ...toGroqMessages(history)],
       temperature: 0.7,
     });
+  }
+
+  /**
+   * Theme narration via Groq Orpheus TTS (English, free).
+   * NOTE: requires one-time terms acceptance in the Groq console —
+   * https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english
+   * The UI falls back to browser speech synthesis when this throws.
+   */
+  async generateThemeAudio(design: CharacterDesign): Promise<{ data: string; format: 'wav' | 'mp3' }> {
+    if (!GROQ_API_KEY) throw new GroqNotConfiguredError();
+    const res = await fetch(GROQ_SPEECH_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: GROQ_TTS_MODEL,
+        input: themeAudioScript(design),
+        voice: GROQ_TTS_VOICE,
+        response_format: 'wav',
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      let message = `Groq TTS failed (HTTP ${res.status}).`;
+      try {
+        const parsed = JSON.parse(body) as { error?: { message?: string } };
+        if (typeof parsed?.error?.message === 'string') message = parsed.error.message;
+      } catch {
+        /* keep default */
+      }
+      throw new Error(message);
+    }
+    const contentType = res.headers.get('content-type') ?? 'audio/wav';
+    const buf = await res.arrayBuffer();
+    const looksMpeg = contentType.includes('mpeg') || contentType.includes('mp3');
+    return { data: arrayBufferToBase64(buf), format: looksMpeg ? 'mp3' : 'wav' };
   }
 }

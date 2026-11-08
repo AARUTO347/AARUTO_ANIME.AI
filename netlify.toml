@@ -3,8 +3,8 @@
   publish = "dist"
   environment = { NODE_VERSION = "20.11.1" }
 
-# Set VITE_GEMINI_API_KEY (and optionally VITE_GROQ_API_KEY,
-# VITE_POLLINATIONS_API_KEY, VITE_ADMIN_EMAIL / VITE_ADMIN_PASSWORD)
+# Set VITE_GROQ_API_KEY and (optionally) VITE_POLLINATIONS_API_KEY,
+# VITE_ADMIN_EMAIL / VITE_ADMIN_PASSWORD
 # in the Netlify UI: Site configuration > Environment variables.
 # Do NOT commit real keys to this file.
 
