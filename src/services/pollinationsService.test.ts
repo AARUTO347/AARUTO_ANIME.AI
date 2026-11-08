@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { dimensions } from './pollinationsService';
 
 describe('dimensions', () => {
-  it('character images are 3:4 at each resolution tier', () => {
+  it('character images are intimate at 512px, and 2MP portrait at 1024px/2048px', () => {
     expect(dimensions('character', '512')).toEqual({ width: 512, height: 683 });
-    expect(dimensions('character', '1024')).toEqual({ width: 768, height: 1024 });
-    expect(dimensions('character', '2048')).toEqual({ width: 1024, height: 1365 });
+    expect(dimensions('character', '1024')).toEqual({ width: 1280, height: 1706 });
+    expect(dimensions('character', '2048')).toEqual({ width: 1280, height: 1706 });
   });
 
   it('environment images are 16:9 and resolution-independent', () => {
@@ -20,5 +20,11 @@ describe('dimensions', () => {
       expect(height / width).toBeGreaterThanOrEqual(1.32);
       expect(height / width).toBeLessThanOrEqual(1.34);
     }
+  });
+
+  it('512px stays below the free-tier pixel budget; higher tiers go big', () => {
+    const { width: w512, height: h512 } = dimensions('character', '512');
+    const { width: w1024, height: h1024 } = dimensions('character', '1024');
+    expect(w512 * h512).toBeLessThan(w1024 * h1024);
   });
 });

@@ -61,7 +61,7 @@ export const DETAIL_ENHANCERS: Record<PromptDetail, string> = {
   high:
     'intricate details, crisp linework, rich textures, cinematic lighting, volumetric atmosphere.',
   master:
-    'masterpiece, top-tier quality, hyper intricate detail, award-winning illustration, 8k resolution, cinematic lighting, volumetric fog, trending on artstation and pixiv.',
+    'masterpiece, ultra-detailed, 8k, sharp focus, depth of field, volumetric lighting, cinematic atmosphere, intricate textures, award-winning photorealism',
 };
 
 export const buildImagePrompt = (

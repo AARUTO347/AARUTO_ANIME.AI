@@ -36,7 +36,7 @@ import { generateSpectralPortrait, generateSpectralEnvironment } from './lib/spe
 const QUALITY_INFO: Record<QualityLevel, string> = {
   GENIN: 'GENIN · flux · fast · 512px',
   CHUNIN: 'CHUNIN · flux · 768px · high detail',
-  JONIN: 'JONIN · flux · 1024px · master detail',
+  JONIN: 'JONIN · flux + enhance · 1280×1706 (2MP) · master detail',
 };
 
 // Demo-only admin account, configured at build time (never commit real credentials).

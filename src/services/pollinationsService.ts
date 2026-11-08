@@ -16,15 +16,25 @@ export function isPollinationsConfigured(): boolean {
   return Boolean(POLLINATIONS_API_KEY);
 }
 
-/** Image dimensions tuned per type and resolution setting (free-tier budget aware). */
+/** Image dimensions tuned per tier and resolution setting (free-tier budget aware). */
 export function dimensions(type: ImagePromptType, resolution: '512' | '1024' | '2048'): { width: number; height: number } {
   if (type === 'environment') return { width: 1280, height: 720 };
   if (resolution === '512') return { width: 512, height: 683 };
-  if (resolution === '2048') return { width: 1024, height: 1365 };
-  return { width: 768, height: 1024 };
+  if (resolution === '2048') return { width: 1280, height: 1706 };
+  // Default (1024): JONIN target — big portrait that flux-schnell/sana render beautifully on free tier.
+  return { width: 1280, height: 1706 };
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const hashString = (input: string): number => {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+};
 
 const detailFor = (quality: QualityLevel): string =>
   quality === 'JONIN' ? DETAIL_ENHANCERS.master : quality === 'CHUNIN' ? DETAIL_ENHANCERS.high : DETAIL_ENHANCERS.standard;
@@ -57,6 +67,9 @@ export async function generatePollinationsImage(
     referrer: 'aaruto_anime_ai',
   });
   if (enhanceFor(quality)) params.set('enhance', 'true');
+  // Deterministic seed from character identity — same character, same face, every render.
+  const seed = hashString(`${design.name}|${design.visualTraits.slice(0, 80)}|${design.stats.agility}`) % 100000;
+  params.set('seed', String(seed));
   const url = `${POLLINATIONS_BASE}/${encodeURIComponent(prompt)}?${params}`;
 
   let lastError: Error | null = null;
