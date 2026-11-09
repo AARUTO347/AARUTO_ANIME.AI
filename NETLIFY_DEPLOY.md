@@ -16,7 +16,7 @@ npm run build
 
 ## 2. Environment variables
 
-Set in **Netlify UI → Site configuration → Environment variables** (or `.env` locally):
+Set them in **Netlify UI → Site configuration → Environment variables** (or locally via `netlify/functions/.env` / shell exports) — **never** in `.env` at the repo root, and **never** prefixed with `VITE_`.
 
 | Name | Required | Notes |
 |---|---|---|
@@ -24,6 +24,7 @@ Set in **Netlify UI → Site configuration → Environment variables** (or `.env
 | `GROQ_TEXT_MODEL` | No | Defaults to `qwen/qwen3.8-27b` |
 | `POLLINATIONS_API_KEY` | No | Optional Pollinations key; anonymous flux works without it |
 | `ADMIN_EMAIL` | No | Email for the admin account (optional) |
+| `NODE_ENV` | Build env only | Vite builds production bundles automatically. Do **not** set `NODE_ENV=production` in `.env` — preview/build will error. Production bundles come from `vite build` (CI / Netlify sets it automatically). |
 | `ADMIN_PASSWORD_SCRYPT` | No | Scrypt hash of admin password in `scrypt:<salt>:<hash>` format. Use `node -e "console.log(require('crypto').scryptSync('pw', require('crypto').randomBytes(16), 64).toString('hex'))"`. If unset, no admin exists. |
 
 **Never** put these in `VITE_*` or client-side variables — the client calls `/api/...` only.
