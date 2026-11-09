@@ -8,7 +8,7 @@ const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || `${8 * 60 * 60 * 100
 export const MAX_PROMPT_LENGTH = 500;
 export const MAX_BODY_BYTES = 16 * 1024; // 16 KB
 
-export function json(status, body) {
+export function json(status, body, headers = {}) {
   return {
     statusCode: status,
     headers: {
@@ -16,6 +16,7 @@ export function json(status, body) {
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      ...(headers || {}),
     },
     body: JSON.stringify(body),
   };

@@ -32,7 +32,8 @@ function readBody(event) {
     if (!raw) return {};
     const text = event.isBase64Encoded ? Buffer.from(raw, 'base64').toString('utf8') : raw;
     if (text.length > MAX_BODY_BYTES) return { __tooLarge: true };
-    return safeJsonParse(text, {});
+    const stripped = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+    return safeJsonParse(stripped, {});
   } catch {
     return {};
   }
