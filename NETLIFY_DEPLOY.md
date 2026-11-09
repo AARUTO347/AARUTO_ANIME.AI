@@ -1,58 +1,51 @@
 # AARUTO_ANIME.AI — Netlify Deployment Guide
 
-## Prerequisites
-- Node.js ≥ 20.11.1 and npm ≥ 10 installed locally
-- A Netlify account
-- A free Groq API key (`https://console.groq.com/keys`) — text + TTS
-- (Optional) A free Pollinations API key (`https://enter.pollinations.ai`) — higher image rate limits
+React SPA + Netlify Functions (server-side API). Deploy to GitHub + Netlify.
 
-## 1. Verify the build locally
+## 1. Install & verify locally
 
 ```bash
 npm install
+cp .env.example .env
+# edit .env — add GROQ_API_KEY; optionally POLLINATIONS_API_KEY and ADMIN_* credentials
+npm run dev:api   # http://127.0.0.1:8787
+npm run dev       # http://localhost:3010  (Vite proxies /api → 127.0.0.1:8787)
+npm test
 npm run build
-npm run preview   # http://localhost:4173
 ```
 
-`npm run build` must finish green (it runs `tsc --noEmit` first). The output is `dist/`.
+## 2. Environment variables
 
-## 2. Configure environment variables
+Set in **Netlify UI → Site configuration → Environment variables** (or `.env` locally):
 
-Set these in **Netlify UI → Site configuration → Environment variables** (never commit them):
-
-| Variable | Required | Notes |
+| Name | Required | Notes |
 |---|---|---|
-| `VITE_GROQ_API_KEY` | Recommended | Free Groq key — text + Orpheus TTS |
-| `VITE_GROQ_TEXT_MODEL` | No | Override Groq model (default `qwen/qwen3.8-27b`) |
-| `VITE_POLLINATIONS_API_KEY` | No | Free Pollinations key — higher free image limits |
-| `VITE_ADMIN_EMAIL` | No | Optional demo admin account |
-| `VITE_ADMIN_PASSWORD` | No | Optional demo admin password |
+| `GROQ_API_KEY` | Yes | Groq API key (free tier). https://console.groq.com/keys |
+| `GROQ_TEXT_MODEL` | No | Defaults to `qwen/qwen3.8-27b` |
+| `POLLINATIONS_API_KEY` | No | Optional Pollinations key; anonymous flux works without it |
+| `ADMIN_EMAIL` | No | Email for the admin account (optional) |
+| `ADMIN_PASSWORD_SCRYPT` | No | Scrypt hash of admin password in `scrypt:<salt>:<hash>` format. Use `node -e "console.log(require('crypto').scryptSync('pw', require('crypto').randomBytes(16), 64).toString('hex'))"`. If unset, no admin exists. |
 
-Locally the same values go in `.env.local` (git-ignored).
+**Never** put these in `VITE_*` or client-side variables — the client calls `/api/...` only.
 
-**Orpheus TTS terms:** the free theme-music model requires a one-time acceptance at <https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english>. Until accepted, the theme button gracefully speaks with the browser's built-in voice.
-
-## 3a. GitHub integration (recommended)
+## 3a. GitHub + Netlify (recommended)
 
 1. Push this repository to GitHub.
-2. Netlify → **Add new site → Import an existing project** → pick the repo.
-3. Build settings (auto-detected from `netlify.toml`):
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-   - Node 20.11.1
-4. Add the environment variables from step 2 in the Netlify UI.
-5. Deploy. SPA fallback, security headers and immutable asset caching are preconfigured in `netlify.toml`.
+2. Netlify → Add new site → Import an existing project → pick the repository.
+3. Build settings (auto-detected): command `npm run build`, publish `dist`, Node 20.11.1.
+4. Add environment variables in Netlify UI before deploying.
+5. Deploy. SPA + API are wired in `netlify.toml`: `/api/*` → `.netlify/functions/api`, other paths → `index.html`.
 
 ## 3b. GitHub Actions
 
 `.github/workflows/netlify-deploy.yml` runs on every push/PR to `main`:
 
 1. `npm ci` → typecheck → lint → test → build
-2. On **push to main only**, deploys `dist/` with `netlify-cli deploy --prod`
+2. On push to main only, `netlify-cli deploy --prod --dir=dist`.
 
-Required repo secrets: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` (deploy), and the `VITE_*` variables from step 2 (build). PRs only build — they never deploy.
+Required secrets: `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID` (deploy), `GROQ_API_KEY`, `POLLINATIONS_API_KEY` (build).
 
-Publishing `.github/workflows/netlify-deploy.yml` to GitHub requires the `workflow` scope on your `gh` token (`gh auth refresh -h github.com -s workflow`).
+**Publishing the workflow file requires the `workflow` scope:** `gh auth refresh -h github.com -s workflow`.
 
 ## 3c. Manual deploy with Netlify CLI
 
@@ -64,24 +57,18 @@ netlify deploy --prod --dir=dist
 ```
 
 ## 4. Post-deploy checklist
-
-- [ ] Site loads, login/signup works
-- [ ] MANIFEST generates a design (Groq) and an image (Pollinations)
-- [ ] Evolve / Expand World / Theme audio all work
-- [ ] Share link (`#/summon/...`) opens and imports the chronicle
-- [ ] History persists across reloads (IndexedDB — check DevTools → Application)
-- [ ] PNG/SVG download works
-- [ ] Security headers present (`X-Content-Type-Options`, `Referrer-Policy`, …) — see `netlify.toml`
-- [ ] **Settings → TEST KEY** shows Groq ✓ and Pollinations status correctly
+- [ ] Site loads, login/signup works (server-side authentication)
+- [ ] MANIFEST produces a design (Groq via `/api/ai/design`) and image (Pollinations via `/api/ai/image`)
+- [ ] Evolve / Expand World / Theme audio work
+- [ ] Share link (`#/summon/...`) works
+- [ ] History persists (IndexedDB)
+- [ ] Security headers present
+- [ ] `https://your-site/api/health` returns `{"groq":true,...}`
 
 ## Troubleshooting
-
-| Issue | Fix |
-|---|---|
-| Blank page | Open DevTools console; usually a missing `VITE_GROQ_API_KEY` or a stale deploy |
-| Groq 401/INVALID_API_KEY | Key is wrong or missing — verify at <https://console.groq.com/keys> and redeploy |
-| Groq 429 | Rate limit — free tier is fine for personal use; retry shortly |
-| Orpheus TTS: "model requires terms acceptance" | One-time: open <https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english> and accept the terms |
-| Images fail with 5xx/429 | Pollinations "classic at limit" is transient — the app retries and then falls back to a local Spectral Sketch (SVG) automatically |
-| `npm ci` fails in CI | `package-lock.json` is committed — keep it in sync when changing deps |
-| Routes 404 | `netlify.toml` ships the SPA rewrite `/* → /index.html` |
+- 404 on `/api/*` → `netlify.toml` must list the `/api/*` redirect before `/*`.
+- `429` → rate limited, wait and retry.
+- CORS/cookie errors → clear cookies for the domain; ensure `SESSION_TTL_MS` and cookies aren’t blocked.
+- Images are SVG → Pollinations unavailable (anonymous quota / key cooldown); the app falls back to local Spectral Sketches.
+- Orpheus TTS: `400 model_terms_required` → one-time terms acceptance at
+  https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english

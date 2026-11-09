@@ -3,10 +3,10 @@
   publish = "dist"
   environment = { NODE_VERSION = "20.11.1" }
 
-# Set VITE_GROQ_API_KEY and (optionally) VITE_POLLINATIONS_API_KEY,
-# VITE_ADMIN_EMAIL / VITE_ADMIN_PASSWORD
-# in the Netlify UI: Site configuration > Environment variables.
-# Do NOT commit real keys to this file.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
 
 [[redirects]]
   from = "/*"
@@ -29,3 +29,7 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# Server-only variables go here / in Site Settings — NEVER commit secrets:
+# GROQ_API_KEY, GROQ_TEXT_MODEL, POLLINATIONS_API_KEY
+# ADMIN_EMAIL, ADMIN_PASSWORD_SCRYPT

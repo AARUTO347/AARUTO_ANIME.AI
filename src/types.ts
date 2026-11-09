@@ -6,15 +6,6 @@ export interface User {
   isAdmin: boolean;
 }
 
-/** Shape of locally-registered accounts in localStorage (demo auth only). */
-export interface StoredUser {
-  email: string;
-  /** Current format: SHA-256 hex hash. */
-  passwordHash?: string;
-  /** Legacy plaintext field — migrated to passwordHash on next login. */
-  password?: string;
-}
-
 export interface CharacterStats {
   strength: number;
   agility: number;

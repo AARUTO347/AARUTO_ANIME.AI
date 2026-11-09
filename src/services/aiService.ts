@@ -1,79 +1,58 @@
-import { CharacterDesign, QualityLevel, AppSettings } from '../types';
-import { GroqService, isGroqConfigured, GROQ_TEXT_MODEL } from './groqService';
-import { generatePollinationsImage, isPollinationsConfigured } from './pollinationsService';
+// Client facade for the trusted server-side API.
+// Never imports provider keys — all AI calls route through /api/...
+import type { CharacterDesign, AppSettings, QualityLevel, SenseiMessage } from '../types';
+import * as api from './apiClient';
 
 export interface ConnectionDiagnostic {
   groq: { configured: boolean; ok: boolean; detail: string };
   pollinations: { configured: boolean; detail: string };
 }
 
-export interface ThemeAudioResult {
-  data: string;
-  format: 'wav' | 'mp3';
-}
-
-/**
- * Unified AI facade used by the UI — a 100% free stack:
- *
- * - TEXT calls (design/evolve/re-roll/oracle/sensei): Groq free Qwen 3.8 27B.
- * - IMAGE calls: Pollinations hosted flux (free, works anonymously; key raises
- *   limits) → throws, letting the UI manifest a local Spectral Sketch.
- * - AUDIO (theme narration): Groq Orpheus TTS (free; requires one-time terms
- *   acceptance in the Groq console — the UI falls back to browser speech).
- */
 export class AiService {
-  private groq = new GroqService();
-
-  generateDesign(prompt: string): Promise<CharacterDesign> {
-    return this.groq.generateDesign(prompt);
+  async generateDesign(prompt: string): Promise<CharacterDesign> {
+    return api.generateDesign(prompt);
   }
-
-  evolveDesign(current: CharacterDesign): Promise<CharacterDesign> {
-    return this.groq.evolveDesign(current);
+  async evolveDesign(current: CharacterDesign): Promise<CharacterDesign> {
+    return api.evolveDesign(current);
   }
-
-  updateField(design: CharacterDesign, field: keyof CharacterDesign): Promise<unknown> {
-    return this.groq.updateField(design, field);
+  async updateField(design: CharacterDesign, field: keyof CharacterDesign): Promise<unknown> {
+    return api.updateField(design, field);
   }
-
-  loreChat(design: CharacterDesign, userQuestion: string): Promise<string> {
-    return this.groq.loreChat(design, userQuestion);
+  async loreChat(design: CharacterDesign, userQuestion: string): Promise<string> {
+    return api.loreChat(design, userQuestion);
   }
-
-  senseiAdvice(history: Array<{ role: 'user' | 'model'; parts: { text: string }[] }>): Promise<string> {
-    return this.groq.senseiAdvice(history);
+  async senseiAdvice(history: Array<{ role: 'user' | 'model' | 'sensei'; parts: { text: string }[] | string }>): Promise<string> {
+    const mapped: SenseiMessage[] = history.map((m) => ({
+      role: m.role === 'model' || m.role === 'sensei' ? 'sensei' : 'user',
+      text: Array.isArray(m.parts) ? m.parts.map((p) => p.text || '').join(' ') : String(m.parts || ''),
+    }));
+    return api.senseiAdvice(mapped);
   }
-
-  generateImage(
+  async generateImage(
     design: CharacterDesign,
-    quality: QualityLevel,
-    settings: AppSettings,
+    _quality: QualityLevel,
+    _settings: AppSettings,
     type: 'character' | 'environment' = 'character',
   ): Promise<string> {
-    return generatePollinationsImage(design, quality, settings, type);
+    return api.generateImage(design, type);
   }
-
-  generateThemeAudio(design: CharacterDesign): Promise<ThemeAudioResult> {
-    return this.groq.generateThemeAudio(design);
+  async generateThemeAudio(design: CharacterDesign): Promise<{ data: string; format: 'wav' | 'mp3' }> {
+    const url = await api.generateThemeAudio(design);
+    const base64 = url.split(',')[1] || '';
+    return { data: base64, format: 'mp3' };
   }
-
-  /** 1-token ping against Groq; Pollinations is reported without spending quota. */
   async testConnection(): Promise<ConnectionDiagnostic> {
-    const groqConfigured = isGroqConfigured();
-    const groqFailure = groqConfigured ? await this.groq.testConnection() : null;
+    const health = await api.health();
+    const groqOk = health?.groq ?? false;
     return {
       groq: {
-        configured: groqConfigured,
-        ok: groqConfigured && groqFailure === null,
-        detail: !groqConfigured
-          ? 'not configured — set VITE_GROQ_API_KEY (free at console.groq.com/keys)'
-          : groqFailure ?? `Key accepted — answered the ping on ${GROQ_TEXT_MODEL}.`,
+        configured: groqOk,
+        ok: groqOk,
+        detail: groqOk ? 'Server-side Groq reachable' : 'Server Groq key not configured',
       },
       pollinations: {
-        configured: isPollinationsConfigured(),
-        detail: isPollinationsConfigured()
-          ? 'image rendering — key configured (flux), fallback for every image call'
-          : 'image rendering — no key; anonymous flux access attempted',
+        configured: health?.pollinations ?? true,
+        detail: 'Anonymous flux via /api/image',
       },
     };
   }

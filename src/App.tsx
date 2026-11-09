@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { extractErrorMessage, isQuotaError } from './lib/aiErrors';
 import { AiService } from './services/aiService';
-import { isGroqConfigured } from './services/groqService';
+import {
+  login as apiLogin,
+  logout as apiLogout,
+  me as apiMe,
+  signup as apiSignup,
+  health as apiHealth,
+  ApiError,
+} from './services/apiClient';
 import {
   GenerationState,
   GeneratedResult,
@@ -9,7 +15,6 @@ import {
   SenseiMessage,
   CharacterDesign,
   User,
-  StoredUser,
   AppSettings,
   ArtStyle,
   LightingStyle,
@@ -28,39 +33,17 @@ import {
   parseBackup,
   createId,
 } from './lib/storage';
-import { hashPassword, verifyPassword, isPlausibleEmail } from './lib/authCrypto';
 import { decodeShareHash } from './lib/shareCodec';
 import { themeAudioScript } from './lib/prompts';
 import { generateSpectralPortrait, generateSpectralEnvironment } from './lib/spectralPortrait';
 
 const QUALITY_INFO: Record<QualityLevel, string> = {
-  GENIN: 'GENIN · flux · fast · 512px',
-  CHUNIN: 'CHUNIN · flux · 768px · high detail',
-  JONIN: 'JONIN · flux + enhance · 1280×1706 (2MP) · master detail',
+  GENIN: 'GENIN · fast · 512px',
+  CHUNIN: 'CHUNIN · high detail · 1280×1706',
+  JONIN: 'JONIN · master detail · 1280×1706',
 };
 
-// Demo-only admin account, configured at build time (never commit real credentials).
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL as string | undefined)?.trim() || undefined;
-const ADMIN_PASSWORD = (import.meta.env.VITE_ADMIN_PASSWORD as string | undefined) || undefined;
-const ADMIN_CONFIGURED = Boolean(ADMIN_EMAIL && ADMIN_PASSWORD);
-
-const USERS_KEY = 'aaruto_all_users';
 const SETTINGS_KEY = 'aaruto_settings';
-const USER_KEY = 'aaruto_user';
-const LOGIN_COUNT_KEY = 'aaruto_login_count';
-
-const readStoredUsers = (): StoredUser[] => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeStoredUsers = (users: StoredUser[]) => {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-};
 
 const DEFAULT_SETTINGS: AppSettings = {
   autoSave: true,
@@ -79,6 +62,7 @@ interface Notification {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [healthWarning, setHealthWarning] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -92,7 +76,6 @@ const App: React.FC = () => {
   const [historyViewMode, setHistoryViewMode] = useState<'grid' | 'list'>('grid');
   const [savedScrolls, setSavedScrolls] = useState<GeneratedResult[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loginCount, setLoginCount] = useState<number>(0);
   const [notification, setNotification] = useState<Notification | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showImmersiveImage, setShowImmersiveImage] = useState(false);
@@ -125,23 +108,27 @@ const App: React.FC = () => {
     setHistory(prev => [item, ...prev.filter(x => x.id !== item.id)].slice(0, 30));
   }, []);
 
-  // ---- Startup: migrate legacy localStorage → IndexedDB, load persisted data, check for share hash ----
+  // ---- Startup: restore server session, migrate legacy localStorage → IndexedDB, load persisted data, check for share hash ----
   useEffect(() => {
     let cancelled = false;
 
-    const savedUser = localStorage.getItem(USER_KEY);
-    if (savedUser) {
+    (async () => {
       try {
-        setUser(JSON.parse(savedUser));
+        const res = await apiMe();
+        if (!cancelled) setUser(res.user);
       } catch {
-        localStorage.removeItem(USER_KEY);
+        if (!cancelled) setUser(null);
       }
-    }
-    const savedLoginCount = localStorage.getItem(LOGIN_COUNT_KEY);
-    if (savedLoginCount) {
-      const n = parseInt(savedLoginCount, 10);
-      if (!Number.isNaN(n)) setLoginCount(n);
-    }
+    })();
+
+    apiHealth().then(h => {
+      if (!h) {
+        setHealthWarning('Server API unreachable — start it with: npm run dev:api');
+        return;
+      }
+      if (!h.groq) setHealthWarning('Server Groq key missing — text generation unavailable; images still render via Pollinations.');
+    }).catch(() => setHealthWarning('Server API unreachable — start it with: npm run dev:api'));
+
     const savedSettingsLocal = localStorage.getItem(SETTINGS_KEY);
     if (savedSettingsLocal) {
       try { setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettingsLocal) }); } catch (e) { console.warn('[settings] ignoring corrupt settings', e); }
@@ -172,7 +159,6 @@ const App: React.FC = () => {
         if (cancelled) return;
         setHistory(h);
         setSavedScrolls(s);
-        // A share-link import wins over the autosaved draft.
         if (draft && !imported) setResult(draft);
       } catch (err) {
         console.error('[storage] failed to load persisted data', err);
@@ -222,100 +208,40 @@ const App: React.FC = () => {
 
   useEffect(() => () => window.clearTimeout(notifyTimeout.current), []);
 
-  const incrementLoginCount = () => {
-    setLoginCount(prev => {
-      const n = prev + 1;
-      localStorage.setItem(LOGIN_COUNT_KEY, String(n));
-      return n;
-    });
-  };
-
   const notifyError = useCallback((err: unknown, fallback: string) => {
     console.error(fallback, err);
-    const detail = extractErrorMessage(err);
-    showNotify(detail && detail !== '{}' ? `${fallback}: ${detail}` : fallback, 'error');
+    const message = err instanceof Error ? err.message : typeof err === 'string' ? err : String(err ?? 'Unknown error');
+    showNotify(message && message !== '{}' ? `${fallback}: ${message}` : fallback, 'error');
   }, [showNotify]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
-    if (!isPlausibleEmail(cleanEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(cleanEmail)) {
       setError('Enter a valid email address.');
       return;
     }
-    if (password.length < 6) {
-      setError('Passkey must be at least 6 characters.');
+    if (password.length < 8) {
+      setError('Passkey must be at least 8 characters.');
       return;
     }
     setError(null);
     setAuthBusy(true);
     try {
-      if (authMode === 'LOGIN') {
-        // Optional build-time demo admin account.
-        if (ADMIN_CONFIGURED && cleanEmail === ADMIN_EMAIL!.toLowerCase()) {
-          if (password === ADMIN_PASSWORD) {
-            const u: User = { email: ADMIN_EMAIL!, isAdmin: true };
-            setUser(u);
-            localStorage.setItem(USER_KEY, JSON.stringify(u));
-            incrementLoginCount();
-            return;
-          }
-          setError('Mismatch. Access denied.');
-          return;
-        }
-        const users = readStoredUsers();
-        const found = users.find(u => u.email.toLowerCase() === cleanEmail);
-        if (!found) {
-          setError('No record bound to that identity.');
-          return;
-        }
-        let ok = false;
-        if (found.passwordHash) {
-          ok = await verifyPassword(password, found.passwordHash);
-        } else if (typeof found.password === 'string') {
-          // Legacy plaintext account → verify once, then migrate to a hash.
-          ok = found.password === password;
-          if (ok) {
-            found.passwordHash = await hashPassword(password);
-            delete found.password;
-            writeStoredUsers(users);
-          }
-        }
-        if (!ok) {
-          setError('Mismatch. Access denied.');
-          return;
-        }
-        const u: User = { email: found.email, isAdmin: false };
-        setUser(u);
-        localStorage.setItem(USER_KEY, JSON.stringify(u));
-        incrementLoginCount();
-      } else {
-        if (ADMIN_CONFIGURED && cleanEmail === ADMIN_EMAIL!.toLowerCase()) {
-          setError('This identity is reserved. Use the Sealed Entry instead.');
-          return;
-        }
-        const users = readStoredUsers();
-        if (users.some(u => u.email.toLowerCase() === cleanEmail)) {
-          setError('Identity already bound.');
-          return;
-        }
-        const passwordHash = await hashPassword(password);
-        writeStoredUsers([...users, { email: cleanEmail, passwordHash }]);
-        const u: User = { email: cleanEmail, isAdmin: false };
-        setUser(u);
-        localStorage.setItem(USER_KEY, JSON.stringify(u));
-        incrementLoginCount();
-      }
+      const res = authMode === 'LOGIN'
+        ? await apiLogin(cleanEmail, password)
+        : await apiSignup(cleanEmail, password);
+      setUser(res.user);
     } catch (err) {
       notifyError(err, 'Authentication failed');
-      setError('Authentication subsystem error. See console for details.');
+      setError(err instanceof ApiError ? err.message : 'Authentication subsystem error. Try again.');
     } finally {
       setAuthBusy(false);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(USER_KEY);
+    apiLogout().catch(err => console.error('[auth] logout failed', err));
     setUser(null);
     showNotify('Session ended.', 'info');
   };
@@ -366,12 +292,7 @@ const App: React.FC = () => {
     setState(GenerationState.IDLE);
 
     if (imageError) {
-      showNotify(
-        isQuotaError(imageError)
-          ? 'Images unavailable (quota) — a Spectral Sketch was manifested instead (design preserved).'
-          : 'Image failed — a Spectral Sketch was manifested instead (design preserved).',
-        'info',
-      );
+      showNotify('Image generation unavailable — a Spectral Sketch was manifested instead (design preserved).', 'info');
     } else {
       showNotify('Manifestation successful.', 'success');
     }
@@ -411,12 +332,7 @@ const App: React.FC = () => {
     upsertHistory(newResult);
     setState(GenerationState.IDLE);
     if (imageError) {
-      showNotify(
-        isQuotaError(imageError)
-          ? 'Ascension recorded — Pollinations unavailable, so a Spectral Sketch was manifested.'
-          : 'Evolution image failed — a Spectral Sketch was manifested.',
-        'info',
-      );
+      showNotify('Ascension recorded — image provider unavailable; a Spectral Sketch was manifested instead.', 'info');
       return;
     }
     if (window.innerWidth < 768) setShowImmersiveImage(true);
@@ -442,12 +358,7 @@ const App: React.FC = () => {
     setSavedScrolls(prev => prev.map(item => item.id === newResult.id ? newResult : item));
     if (window.innerWidth < 768) setShowImmersiveImage(true);
     if (envError) {
-      showNotify(
-        isQuotaError(envError)
-          ? 'Images unavailable — a Spectral Sketch environment was manifested instead.'
-          : 'World image failed — a Spectral Sketch environment was manifested.',
-        'info',
-      );
+      showNotify('World image unavailable — a Spectral Sketch environment was manifested instead.', 'info');
     } else {
       showNotify('World manifested.', 'success');
     }
@@ -668,7 +579,7 @@ const App: React.FC = () => {
              <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">{user.isAdmin ? 'MASTER ARCHITECT' : 'SUMMONER'}</span>
              <div className="flex items-center gap-3">
               <span className="text-[9px] text-gray-500 truncate max-w-[150px]">{user.email}</span>
-              <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Sessions: {loginCount}</span>
+              <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Session</span>
              </div>
           </div>
           <button onClick={() => setShowSettings(!showSettings)} aria-label="Open engine parameters" className="w-11 h-11 rounded-xl bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-all border border-white/10"><i className="fa-solid fa-gear"></i></button>
@@ -677,9 +588,9 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {!isGroqConfigured() && (
+      {healthWarning && (
         <div role="alert" className="flex-shrink-0 bg-amber-500/10 border-b border-amber-500/30 text-amber-300 px-6 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-center z-30">
-          Groq key missing — set the FREE VITE_GROQ_API_KEY in .env.local (console.groq.com/keys). Images still work free via Pollinations.
+          {healthWarning}
         </div>
       )}
 

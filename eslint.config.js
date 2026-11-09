@@ -30,4 +30,13 @@ export default tseslint.config(
       globals: { ...globals.node },
     },
   },
+  {
+    files: ['netlify/**/*.mjs', 'api-server.mjs', 'vite.config.ts'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-undef': 'off',
+    },
+  },
 );
